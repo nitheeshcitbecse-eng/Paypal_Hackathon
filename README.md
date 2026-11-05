@@ -138,7 +138,7 @@ npm run dev
 | Team Member | Responsibility |
 |---|---|
 | Nitheesh S | Backend development and PayPal integration |
-| Nitheesh | AI safety, policy rules engine, and testing |
+| Nithesh Kumar P | AI safety, policy rules engine, and testing |
 | Abijeeth | AI shopping agent and adversarial attack scenarios |
 | Minhu Parthasarathy | Frontend development and dashboard |
 
