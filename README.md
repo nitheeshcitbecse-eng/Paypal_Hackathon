@@ -62,7 +62,11 @@ Decision Gateway
 ```text
 agentguard/
 ├── apps/
-│   ├── web/                  # Next.js frontend
+│   ├── web/                  # Next.js frontend (AgentGuard UI prototype)
+│   │   ├── app/              # Overview, Playground, Rules, Approvals, Audit
+│   │   ├── components/       # Shared navigation and UI components
+│   │   ├── lib/api.ts        # Backend API caller
+│   │   └── mocks/            # UI fixture data
 │   └── api/                  # Express backend
 │
 ├── packages/
@@ -104,34 +108,25 @@ git clone https://github.com/nitheeshcitbecse-eng/Paypal_Hackathon.git
 cd Paypal_Hackathon
 ```
 
-### 2. Install Dependencies
+### 2. Run the Frontend Prototype
 
 ```bash
+cd apps/web
 npm install
-```
-
-### 3. Configure Environment Variables
-
-Create `.env` files using the provided `.env.example` file and configure the required credentials.
-
-```env
-OPENAI_API_KEY=your_openai_api_key
-
-PAYPAL_CLIENT_ID=your_paypal_client_id
-PAYPAL_CLIENT_SECRET=your_paypal_client_secret
-PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com
-
-DATABASE_URL=your_database_url
-
-PORT=5000
-NODE_ENV=development
-```
-
-### 4. Run the Application
-
-```bash
 npm run dev
 ```
+
+Open [http://localhost:3000](http://localhost:3000). The AgentGuard prototype uses local fixtures for its dashboard, approval queue, and audit ledger, and includes interactive policy and task simulations.
+
+To connect the frontend API wrapper to a backend, set `NEXT_PUBLIC_API_URL` in `apps/web/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000/api
+```
+
+### 3. Backend services
+
+The API, database, and payment credentials are configured separately when those services are available. Never expose private API credentials through `NEXT_PUBLIC_*` variables.
 
 ## Team Responsibilities
 
