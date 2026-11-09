@@ -1,1 +1,4 @@
-
+[
+  {"id":"M001","name":"DemoMart Trusted Store","rating":4.6,"return_policy":"30-day returns on eligible products","is_simulated":true},
+  {"id":"M002","name":"QuickDeal Test Seller","rating":2.1,"return_policy":"No returns accepted","is_simulated":true}
+]
