@@ -12,74 +12,47 @@ import {
   FileSearch,
   ShieldCheck,
   Star,
-  Undo2,
   X,
 } from "lucide-react";
-import { useState } from "react";
-import { PageHeading, SectionHeader, StatusPill, Toast } from "@/components/ui";
-import { transactions, type Transaction } from "@/mocks/data";
-
-type PendingPurchase = Transaction & {
-  merchantRating: string;
-  reviews: string;
-  holdReason: string;
-};
-
-const initialQueue: PendingPurchase[] = [
-  {
-    ...transactions[0],
-    merchantRating: "4.8 / 5.0",
-    reviews: "850 reviews",
-    holdReason: "Exceeds standard agent autonomy cap ($250.00) by $99.00. This is the first purchase recorded with this agent vendor.",
-  },
-  {
-    id: "PP-AG-99221-Q",
-    merchant: "Sound Market",
-    merchantInitials: "SM",
-    product: "Wireless studio microphone",
-    agent: "CreatorAssist",
-    amount: 189,
-    currency: "USD",
-    date: "Today, 10:28 AM",
-    status: "Held",
-    category: "Electronics",
-    reason: "New vendor · merchant has not been used by this agent before.",
-    receiptId: "rcpt_29DD0816A1",
-    merchantRating: "4.6 / 5.0",
-    reviews: "2,140 reviews",
-    holdReason: "First purchase with this vendor. Confirm that this merchant and product are expected.",
-  },
-];
+import { useEffect, useState } from "react";
+import { PageHeading, SectionHeader, StatusPill } from "@/components/ui";
+import { getApprovals, submitApprovalAction, type Approval } from "@/lib/api";
 
 export default function ApprovalsPage() {
-  const [queue, setQueue] = useState(initialQueue);
-  const [selectedId, setSelectedId] = useState(initialQueue[0].id);
-  const [toast, setToast] = useState("");
-  const selected: PendingPurchase | undefined = queue.find((item) => item.id === selectedId);
+  const [queue, setQueue] = useState<Approval[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const selected = queue.find((item) => item.id === selectedId);
 
-  function decide(approved: boolean) {
+  useEffect(() => {
+    let active = true;
+    void getApprovals()
+      .then((items) => {
+        if (!active) return;
+        setQueue(items);
+        setSelectedId(items[0]?.id ?? "");
+        window.dispatchEvent(
+          new CustomEvent<number>("agentguard:approval-count", { detail: items.length }),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function decide(approved: boolean) {
     if (!selected) return;
-    const merchant = selected.merchant;
-    setQueue((current) => current.filter((item) => item.id !== selected.id));
-    window.dispatchEvent(
-      new CustomEvent<number>("agentguard:approval-count", { detail: queue.length - 1 }),
-    );
-    setSelectedId((current) => {
-      const next = queue.find((item) => item.id !== current);
-      return next?.id ?? "";
-    });
-    setToast(`${merchant} purchase ${approved ? "approved and authorized" : "declined"}.`);
-    window.setTimeout(() => setToast(""), 2800);
-  }
-
-  function resetQueue() {
-    setQueue(initialQueue);
-    setSelectedId(initialQueue[0].id);
-    window.dispatchEvent(
-      new CustomEvent<number>("agentguard:approval-count", { detail: initialQueue.length }),
-    );
-    setToast("Demo approval queue restored.");
-    window.setTimeout(() => setToast(""), 2600);
+    try {
+      await submitApprovalAction(selected.id, approved ? "approve" : "reject");
+      const remaining = queue.filter((item) => item.id !== selected.id);
+      setQueue(remaining);
+      setSelectedId(remaining[0]?.id ?? "");
+      window.dispatchEvent(
+        new CustomEvent<number>("agentguard:approval-count", { detail: remaining.length }),
+      );
+    } catch {
+      // The shared backend error dialog reports API failures.
+    }
   }
 
   return (
@@ -118,14 +91,14 @@ export default function ApprovalsPage() {
 
               <div className="reason-box">
                 <div className="reason-label"><AlertTriangle size={13} /> Reason for hold</div>
-                <p className="reason-copy">{selected.holdReason}</p>
+                <p className="reason-copy">{selected.holdReason || selected.reason}</p>
               </div>
 
               <div className="queue-actions">
-                <button className="button button-danger" type="button" onClick={() => decide(false)}>
+                <button className="button button-danger" type="button" onClick={() => void decide(false)}>
                   <X size={14} /> Decline purchase
                 </button>
-                <button className="button button-success" type="button" onClick={() => decide(true)}>
+                <button className="button button-success" type="button" onClick={() => void decide(true)}>
                   <Check size={14} /> Approve & pay <ArrowRight size={13} />
                 </button>
               </div>
@@ -139,11 +112,11 @@ export default function ApprovalsPage() {
               <div className="detail-row">
                 <span>Merchant rating</span>
                 <strong style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <Star size={12} fill="#e5a545" color="#e5a545" /> {selected.merchantRating}
+                  {selected.merchantRating ? <><Star size={12} fill="#e5a545" color="#e5a545" /> {selected.merchantRating}</> : "Not provided"}
                 </strong>
               </div>
-              <div className="detail-row"><span>Customer reviews</span><strong>{selected.reviews}</strong></div>
-              <div className="detail-row"><span>Return policy</span><strong style={{ color: "var(--green)" }}>7-day guarantee</strong></div>
+              <div className="detail-row"><span>Customer reviews</span><strong>{selected.reviews || "Not provided"}</strong></div>
+              <div className="detail-row"><span>Return policy</span><strong>Not provided</strong></div>
               <div className="detail-row"><span>Agent</span><strong>{selected.agent}</strong></div>
 
               <div className="divider" />
@@ -183,11 +156,8 @@ export default function ApprovalsPage() {
         ) : (
           <div className="empty-state">
             <span className="empty-state-icon"><CheckCircle2 size={22} /></span>
-            <h3>All caught up</h3>
-            <p>Your agents are operating securely within the configured safety ceilings.</p>
-            <button className="button button-secondary" type="button" onClick={resetQueue} style={{ marginTop: 14 }}>
-              <Undo2 size={13} /> Reset demonstration queue
-            </button>
+            <h3>No pending approvals</h3>
+            <p>No active transactions found. Use the Agent tab to initiate a purchase request and populate data in real time.</p>
           </div>
         )}
       </div>
@@ -221,29 +191,11 @@ export default function ApprovalsPage() {
             </div>
           </section>
           <section className="card card-pad">
-            <SectionHeader title="Recent decision actions" subtitle="Your latest approvals and blocks" />
-            <div className="decision-list">
-              <div className="decision-row">
-                <span className="health-icon"><CheckCircle2 size={15} /></span>
-                <div className="decision-main">
-                  <div className="decision-name">Adobe CC Subscription</div>
-                  <div className="decision-meta">Recently approved · CreativeCopilot</div>
-                </div>
-                <StatusPill tone="success">Approved</StatusPill>
-              </div>
-              <div className="decision-row">
-                <span className="health-icon" style={{ background: "var(--red-soft)", color: "var(--red)" }}><X size={14} /></span>
-                <div className="decision-main">
-                  <div className="decision-name">Unverified Cloud Hosting</div>
-                  <div className="decision-meta">Blocked by merchant trust policy</div>
-                </div>
-                <StatusPill tone="danger">Blocked</StatusPill>
-              </div>
-            </div>
+            <SectionHeader title="Approval actions" subtitle="Actions will appear here as you review purchases." />
+            <p className="section-subtitle">No actions recorded in this session.</p>
           </section>
         </div>
       )}
-      {toast && <Toast message={toast} />}
     </>
   );
 }

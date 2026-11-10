@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import {
-  ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
   BadgeCheck,
@@ -16,13 +15,43 @@ import {
   Sparkles,
   WalletCards,
 } from "lucide-react";
-import { useState } from "react";
-import { activity, spendingByDay, transactions } from "@/mocks/data";
+import { useEffect, useState } from "react";
 import { MetricCard, PageHeading, SectionHeader, StatusPill, Toast, Toggle } from "@/components/ui";
+import { getApprovals, getOrders, getRules, type Approval, type RuleSet, type Transaction } from "@/lib/api";
 
 export default function OverviewPage() {
-  const [isRunning, setIsRunning] = useState(true);
+  const [isRunning, setIsRunning] = useState(false);
   const [toast, setToast] = useState("");
+  const [orders, setOrders] = useState<Transaction[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [rules, setRules] = useState<RuleSet | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      getOrders().catch(() => []),
+      getApprovals().catch(() => []),
+      getRules().catch(() => null),
+    ]).then(([loadedOrders, loadedApprovals, loadedRules]) => {
+      if (!active) return;
+      setOrders(loadedOrders);
+      setApprovals(loadedApprovals);
+      setRules(loadedRules);
+      window.dispatchEvent(
+        new CustomEvent<number>("agentguard:approval-count", { detail: loadedApprovals.length }),
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const totalSpent = orders.reduce(
+    (sum, order) => sum + (order.status === "Approved" ? Number(order.amount) || 0 : 0),
+    0,
+  );
+  const approvedCount = orders.filter((order) => order.status === "Approved").length;
+  const blockedCount = orders.filter((order) => order.status === "Blocked").length;
 
   function toggleAgent() {
     setIsRunning((running) => !running);
@@ -47,42 +76,42 @@ export default function OverviewPage() {
       <section className="dashboard-hero">
         <div>
           <div className="dashboard-hero-label">Total agent spending</div>
-          <div className="dashboard-hero-value">$18,450.20 <span style={{ fontSize: 13, letterSpacing: 0 }}>USD</span></div>
+          <div className="dashboard-hero-value">${totalSpent.toFixed(2)} <span style={{ fontSize: 13, letterSpacing: 0 }}>USD</span></div>
           <div className="dashboard-hero-meta">
-            <span>Today&apos;s volume: <strong>$4,200.00</strong></span>
-            <span>Budget cycle resets in 8 days</span>
+            <span>Total recorded volume: <strong>${totalSpent.toFixed(2)}</strong></span>
+            <span>{orders.length === 0 ? "No transactions recorded yet." : `${orders.length} recorded transactions`}</span>
           </div>
         </div>
         <div className="dashboard-hero-side">
-          <div className="detail-row"><span>Policy integrity</span><strong>All 5 safeguards enforced</strong></div>
-          <div className="detail-row"><span>Autonomous agents</span><strong>{isRunning ? "Protection active" : "Paused"}</strong></div>
+          <div className="detail-row"><span>Policy integrity</span><strong>{rules ? "Rules loaded" : "No rules configured"}</strong></div>
+          <div className="detail-row"><span>Autonomous agents</span><strong>{isRunning ? "Protection active" : "No active agents"}</strong></div>
         </div>
       </section>
 
       <section className="metric-grid" aria-label="Account metrics">
         <MetricCard
           label="Transactions"
-          value="1,428"
-          foot="+12% vs last week"
+          value={String(orders.length)}
+          foot="Recorded orders"
           icon={CircleDollarSign}
         />
         <MetricCard
           label="Allowed"
-          value="1,290"
-          foot="90.3% pass rate"
+          value={String(approvedCount)}
+          foot="Approved orders"
           icon={CreditCard}
           positive
         />
         <MetricCard
           label="Blocked"
-          value="94"
-          foot="Critical mitigations"
+          value={String(blockedCount)}
+          foot="Blocked orders"
           icon={ShieldAlert}
           positive
         />
         <MetricCard
           label="Pending"
-          value="44"
+          value={String(approvals.length)}
           foot="Human-in-the-loop"
           icon={Clock3}
         />
@@ -105,11 +134,11 @@ export default function OverviewPage() {
                 <ShieldCheck size={18} />
               </span>
               <div>
-                <div className="health-title">{isRunning ? "AgentGuard is active" : "AgentGuard is paused"}</div>
+                <div className="health-title">{isRunning ? "AgentGuard is active" : "No active agent sessions"}</div>
                 <div className="health-subtitle">
                   {isRunning
                     ? "Policy checks are running before every payment."
-                    : "No new autonomous payments will be authorized."}
+                    : "Start a purchase request from the Agent tab to create live activity."}
                 </div>
               </div>
               <div className="health-state">
@@ -123,24 +152,24 @@ export default function OverviewPage() {
                 <p className="section-subtitle">Seven-day agent transaction activity</p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 18, fontWeight: 750 }}>$4,200</div>
-                <div className="metric-foot positive" style={{ justifyContent: "flex-end", marginTop: 4 }}>
-                  <ArrowDownRight size={12} /> Sunday volume
+                <div style={{ fontSize: 18, fontWeight: 750 }}>${totalSpent.toFixed(2)}</div>
+                <div className="metric-foot" style={{ justifyContent: "flex-end", marginTop: 4 }}>
+                  <CircleDollarSign size={12} /> Total volume
                 </div>
               </div>
             </div>
             <div className="chart-area" aria-label="Spending by day">
-              {spendingByDay.map(({ day, amount }, index) => (
-                <div className="chart-column" key={day}>
-                  <span className="chart-value">${amount}</span>
+              {orders.length > 0 ? orders.slice(-7).map((order, index, visibleOrders) => (
+                <div className="chart-column" key={order.id}>
+                  <span className="chart-value">${Number(order.amount || 0).toFixed(0)}</span>
                   <div
-                    className={`chart-bar${index === spendingByDay.length - 1 ? " highlight" : ""}`}
-                    style={{ height: `${Math.max(9, amount / 2.4)}%` }}
-                    title={`${day}: $${amount}`}
+                    className={`chart-bar${index === visibleOrders.length - 1 ? " highlight" : ""}`}
+                    style={{ height: `${Math.max(9, (Number(order.amount) || 0) / Math.max(totalSpent, 1) * 100)}%` }}
+                    title={`${order.date}: $${Number(order.amount || 0).toFixed(2)}`}
                   />
-                  <span className="chart-label">{day}</span>
+                  <span className="chart-label">{order.date}</span>
                 </div>
-              ))}
+              )) : <p className="section-subtitle">No spending activity yet. Submit a purchase request to populate this chart.</p>}
             </div>
           </section>
 
@@ -155,7 +184,7 @@ export default function OverviewPage() {
               }
             />
             <div className="activity-list">
-              {activity.map((transaction) => (
+              {orders.slice(-4).reverse().map((transaction) => (
                 <div className="activity-item" key={transaction.id}>
                   <span className="merchant-logo">{transaction.merchantInitials}</span>
                   <div className="activity-item-main">
@@ -173,6 +202,12 @@ export default function OverviewPage() {
                   </div>
                 </div>
               ))}
+              {orders.length === 0 && (
+                <div className="empty-state">
+                  <h3>No recent agent activity</h3>
+                  <p>No active transactions found. Use the Agent tab to initiate a purchase request and populate data in real time.</p>
+                </div>
+              )}
             </div>
           </section>
         </div>
@@ -186,31 +221,28 @@ export default function OverviewPage() {
             />
             <div className="bar-list">
               <div>
-                <div className="bar-row-top"><span>Daily spend</span><strong>$420 / $1,000</strong></div>
-                <div className="bar-track"><div className="bar-fill" style={{ width: "42%" }} /></div>
+                <div className="bar-row-top"><span>Recorded spend</span><strong>${totalSpent.toFixed(2)} / ${Number(rules?.dailyCap ?? 0).toFixed(2)}</strong></div>
+                <div className="bar-track"><div className="bar-fill" style={{ width: `${rules?.dailyCap ? Math.min(100, totalSpent / rules.dailyCap * 100) : 0}%` }} /></div>
               </div>
               <div>
-                <div className="bar-row-top"><span>Monthly budget</span><strong>$2,840 / $5,000</strong></div>
-                <div className="bar-track"><div className="bar-fill green" style={{ width: "57%" }} /></div>
+                <div className="bar-row-top"><span>Transactions</span><strong>{orders.length}</strong></div>
+                <div className="bar-track"><div className="bar-fill green" style={{ width: `${Math.min(100, orders.length)}%` }} /></div>
               </div>
             </div>
             <div className="divider" />
-            <div className="detail-row"><span>Per-transaction cap</span><strong>$250.00</strong></div>
-            <div className="detail-row"><span>Merchant minimum rating</span><strong>4.2 / 5.0</strong></div>
-            <div className="detail-row"><span>Restricted categories</span><strong>4 hard blocks</strong></div>
-            <div className="detail-row"><span>Policy mode</span><StatusPill tone="info">Strict</StatusPill></div>
+            <div className="detail-row"><span>Per-transaction cap</span><strong>${Number(rules?.transactionCap ?? 0).toFixed(2)}</strong></div>
+            <div className="detail-row"><span>Allowed categories</span><strong>{rules?.allowedCategories?.length ?? 0}</strong></div>
+            <div className="detail-row"><span>Policy mode</span><StatusPill tone="info">{rules?.strict ? "Strict" : "Not configured"}</StatusPill></div>
           </section>
 
           <section className="card card-pad">
             <SectionHeader
               title="Approval queue"
               subtitle="Purchases that need your decision"
-              action={<StatusPill tone="warning">2 waiting</StatusPill>}
+              action={              <StatusPill tone={approvals.length ? "warning" : "neutral"}>{approvals.length} waiting</StatusPill>}
             />
             <div className="decision-list">
-              {transactions
-                .filter((transaction) => transaction.status === "Held")
-                .map((transaction) => (
+              {approvals.map((transaction) => (
                   <div className="decision-row" key={transaction.id}>
                     <span className="merchant-logo">{transaction.merchantInitials}</span>
                     <div className="decision-main">
@@ -220,14 +252,7 @@ export default function OverviewPage() {
                     <ArrowUpRight size={14} className="muted" />
                   </div>
                 ))}
-              <div className="decision-row">
-                <span className="merchant-logo">SM</span>
-                <div className="decision-main">
-                  <div className="decision-name">Wireless studio microphone</div>
-                  <div className="decision-meta">Sound Market · $189.00</div>
-                </div>
-                <Clock3 size={14} className="muted" />
-              </div>
+              {approvals.length === 0 && <p className="section-subtitle">No purchases are waiting for approval.</p>}
             </div>
             <Link className="button button-secondary" href="/approvals" style={{ width: "100%", marginTop: 12 }}>
               Review approvals <ArrowRight size={13} />
