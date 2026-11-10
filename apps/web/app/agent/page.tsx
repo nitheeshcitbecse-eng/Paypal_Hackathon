@@ -18,10 +18,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { PageHeading, SectionHeader, StatusPill, Toast } from "@/components/ui";
+import { createPurchaseRequest, type Decision } from "@/lib/api";
 
 type Scenario = "safe" | "over-budget" | "suspicious";
 type RunResult = {
-  decision: "Approved" | "Held" | "Blocked";
+  decision: Decision;
   amount: string;
   merchant: string;
   reason: string;
@@ -45,27 +46,6 @@ const scenarios: { id: Scenario; label: string; prompt: string }[] = [
   },
 ];
 
-const scenarioResults: Record<Scenario, RunResult> = {
-  safe: {
-    decision: "Approved",
-    amount: "$89.99",
-    merchant: "Keychron Store",
-    reason: "Verified merchant, allowed category, and within your $250 purchase cap.",
-  },
-  "over-budget": {
-    decision: "Held",
-    amount: "$349.00",
-    merchant: "Autonomous Research Lab",
-    reason: "Exceeds the $250 autonomy cap. Your approval is required before payment.",
-  },
-  suspicious: {
-    decision: "Blocked",
-    amount: "$129.00",
-    merchant: "CryptoVault",
-    reason: "Crypto is hard-blocked. The instruction to ignore your rules was flagged.",
-  },
-};
-
 const resultTone = {
   Approved: "success",
   Held: "warning",
@@ -77,6 +57,7 @@ export default function AgentPage() {
   const [prompt, setPrompt] = useState(scenarios[0].prompt);
   const [result, setResult] = useState<RunResult | null>(null);
   const [toast, setToast] = useState("");
+  const [agent, setAgent] = useState("ResearchPilot");
 
   function chooseScenario(id: Scenario) {
     setScenario(id);
@@ -84,16 +65,30 @@ export default function AgentPage() {
     setResult(null);
   }
 
-  function runTask() {
+  async function runTask() {
     if (!prompt.trim()) {
       setToast("Add a task description before running the agent.");
       window.setTimeout(() => setToast(""), 2600);
       return;
     }
 
-    setResult(scenarioResults[scenario]);
-    setToast("Agent task evaluated against your active policy.");
-    window.setTimeout(() => setToast(""), 2600);
+    try {
+      const transaction = await createPurchaseRequest({ agent, prompt: prompt.trim() });
+      if (!transaction || !["Approved", "Held", "Blocked"].includes(transaction.status)) {
+        setResult(null);
+        setToast("The backend returned no purchase decision.");
+      } else {
+        setResult({
+          decision: transaction.status,
+          amount: `$${Number(transaction.amount || 0).toFixed(2)} ${transaction.currency || "USD"}`,
+          merchant: transaction.merchant || "Purchase request",
+          reason: transaction.reason || "No decision explanation was provided.",
+        });
+      }
+      window.setTimeout(() => setToast(""), 2600);
+    } catch {
+      // The shared backend error dialog reports API failures.
+    }
   }
 
   const steps = [
@@ -142,7 +137,7 @@ export default function AgentPage() {
             />
             <label>
               <span className="form-label">Shopping agent</span>
-              <select className="select" defaultValue="ResearchPilot" aria-label="Shopping agent">
+              <select className="select" value={agent} onChange={(event) => setAgent(event.target.value)} aria-label="Shopping agent">
                 <option>ResearchPilot</option>
                 <option>CreativeCopilot</option>
                 <option>OfficeAssist</option>

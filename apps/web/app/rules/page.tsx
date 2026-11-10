@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowRight,
   BadgeCheck,
-  Ban,
   CalendarDays,
   Check,
   CircleDollarSign,
@@ -12,24 +11,43 @@ import {
   LockKeyhole,
   ShieldCheck,
   SlidersHorizontal,
-  Star,
   Undo2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeading, SectionHeader, StatusPill, Toast, Toggle } from "@/components/ui";
-
-const initialCategories = ["Electronics", "Software", "Office Supplies", "Travel"];
-const blockedCategories = ["Gambling", "Crypto", "Adult", "Luxury Goods"];
+import { getRules, saveRules as updateRules, type RuleSet } from "@/lib/api";
 
 export default function RulesPage() {
-  const [strict, setStrict] = useState(true);
-  const [merchantVerification, setMerchantVerification] = useState(true);
-  const [returnPolicy, setReturnPolicy] = useState(true);
-  const [dailyCap, setDailyCap] = useState("1000");
-  const [transactionCap, setTransactionCap] = useState("250");
-  const [humanApproval, setHumanApproval] = useState("100");
-  const [selected, setSelected] = useState<string[]>(initialCategories);
+  const [strict, setStrict] = useState(false);
+  const [merchantVerification, setMerchantVerification] = useState(false);
+  const [returnPolicy, setReturnPolicy] = useState(false);
+  const [dailyCap, setDailyCap] = useState("");
+  const [transactionCap, setTransactionCap] = useState("");
+  const [humanApproval, setHumanApproval] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [categoryInput, setCategoryInput] = useState("");
   const [toast, setToast] = useState("");
+  const [hasRules, setHasRules] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void getRules()
+      .then((rules) => {
+        if (!active || !rules) return;
+        setHasRules(true);
+        setStrict(rules.strict);
+        setMerchantVerification(rules.merchantVerification);
+        setReturnPolicy(rules.returnPolicy);
+        setDailyCap(String(rules.dailyCap ?? 0));
+        setTransactionCap(String(rules.transactionCap ?? 0));
+        setHumanApproval(String(rules.humanApproval ?? 0));
+        setSelected(Array.isArray(rules.allowedCategories) ? rules.allowedCategories : []);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function toggleCategory(category: string) {
     setSelected((current) =>
@@ -39,9 +57,31 @@ export default function RulesPage() {
     );
   }
 
-  function saveRules() {
-    setToast("Your AgentGuard policy has been updated.");
-    window.setTimeout(() => setToast(""), 2800);
+  function addCategory() {
+    const category = categoryInput.trim();
+    if (!category || selected.includes(category)) return;
+    setSelected((current) => [...current, category]);
+    setCategoryInput("");
+  }
+
+  async function saveRules() {
+    const rules: RuleSet = {
+      strict,
+      merchantVerification,
+      returnPolicy,
+      dailyCap: Number(dailyCap) || 0,
+      transactionCap: Number(transactionCap) || 0,
+      humanApproval: Number(humanApproval) || 0,
+      allowedCategories: selected,
+    };
+    try {
+      const saved = await updateRules(rules);
+      setHasRules(saved !== null);
+      setToast("Your AgentGuard policy has been updated.");
+      window.setTimeout(() => setToast(""), 2800);
+    } catch {
+      // The shared backend error dialog reports API failures.
+    }
   }
 
   return (
@@ -51,7 +91,7 @@ export default function RulesPage() {
         title="Rules & Settings"
         description="Define what your AI agents can purchase and when human authorization is required."
         actions={
-          <button className="button button-primary" type="button" onClick={saveRules}>
+          <button className="button button-primary" type="button" onClick={() => void saveRules()}>
             <Check size={14} /> Save changes
           </button>
         }
@@ -61,17 +101,17 @@ export default function RulesPage() {
         <div className="rule-card-heading">
           <span className="rule-icon"><ShieldCheck size={18} /></span>
           <div className="rule-text">
-            <h2 className="rule-title">Strict Enterprise Policy</h2>
-            <p className="rule-copy">High-friction guardrails are active across autonomous payment calls.</p>
+            <h2 className="rule-title">AgentGuard policy</h2>
+            <p className="rule-copy">{hasRules ? "Guardrails loaded from the backend." : "No guardrails are configured yet."}</p>
           </div>
-          <StatusPill tone="success" icon={BadgeCheck}>Active</StatusPill>
+          <StatusPill tone={hasRules ? "success" : "neutral"} icon={hasRules ? BadgeCheck : undefined}>{hasRules ? "Configured" : "Not configured"}</StatusPill>
         </div>
         <div className="divider" />
         <div className="rule-card-heading">
           <span className="rule-icon"><SlidersHorizontal size={16} /></span>
           <div className="rule-text">
             <h2 className="rule-title" style={{ fontSize: 11 }}>Policy mode</h2>
-            <p className="rule-copy">{strict ? "Strict Autonomous Gate" : "Standard monitoring"}</p>
+            <p className="rule-copy">{hasRules ? (strict ? "Strict Autonomous Gate" : "Standard monitoring") : "No policy mode configured"}</p>
           </div>
           <Toggle checked={strict} onChange={() => setStrict((value) => !value)} label="Enable strict policy mode" />
         </div>
@@ -83,7 +123,7 @@ export default function RulesPage() {
             <SectionHeader
               title="Budget & range limits"
               subtitle="Autonomous disbursement caps"
-              action={<StatusPill tone="success">Active</StatusPill>}
+              action={<StatusPill tone={hasRules ? "success" : "neutral"}>{hasRules ? "Configured" : "Not configured"}</StatusPill>}
             />
             <div className="field-row">
               <label>
@@ -112,18 +152,13 @@ export default function RulesPage() {
                     inputMode="decimal"
                   />
                 </div>
-                <span className="section-subtitle">$420 spent today</span>
+                <span className="section-subtitle">$0.00 spent today</span>
               </label>
             </div>
             <div className="divider" />
             <div className="detail-row">
               <span>30-day velocity defense</span>
-              <strong style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-                <span className="status-pill success">Enabled · 99.4%</span>
-                <button className="button button-quiet" type="button" aria-label="Configure velocity defense">
-                  <SlidersHorizontal size={13} />
-                </button>
-              </strong>
+              <strong>{hasRules ? "Configured" : "Not configured"}</strong>
             </div>
           </section>
 
@@ -134,28 +169,39 @@ export default function RulesPage() {
               action={<StatusPill tone="info">{selected.length} allowed</StatusPill>}
             />
             <div className="rule-copy" style={{ marginBottom: 10 }}>Permitted categories</div>
-            <div className="chip-row">
-              {initialCategories.map((category) => (
+            {selected.length > 0 ? <div className="chip-row">
+              {selected.map((category) => (
                 <button
-                  className={`chip${selected.includes(category) ? " selected" : ""}`}
+                  className="chip selected"
                   key={category}
                   type="button"
                   onClick={() => toggleCategory(category)}
-                  aria-pressed={selected.includes(category)}
+                  aria-pressed="true"
                 >
-                  {selected.includes(category) ? <Check size={12} /> : <span aria-hidden="true">+</span>}
+                  <Check size={12} />
                   {category}
                 </button>
               ))}
-            </div>
-            <div className="divider" />
-            <div className="rule-copy" style={{ marginBottom: 10 }}>Strictly restricted · hard block</div>
-            <div className="chip-row">
-              {blockedCategories.map((category) => (
-                <span className="chip" key={category} style={{ color: "var(--red)" }}>
-                  <Ban size={12} /> {category}
-                </span>
-              ))}
+            </div> : <p className="section-subtitle">No allowed categories configured.</p>}
+            <div className="field-row" style={{ alignItems: "end", marginTop: 12 }}>
+              <label>
+                <span className="form-label">Add permitted category</span>
+                <input
+                  className="input"
+                  aria-label="New allowed category"
+                  value={categoryInput}
+                  onChange={(event) => setCategoryInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addCategory();
+                    }
+                  }}
+                />
+              </label>
+              <button className="button button-secondary" type="button" onClick={addCategory}>
+                Add category
+              </button>
             </div>
           </section>
 
@@ -173,7 +219,7 @@ export default function RulesPage() {
               <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
                 <CalendarDays size={13} /> Minimum return window
               </span>
-              <strong>14+ days</strong>
+              <strong>{hasRules && returnPolicy ? "Required" : "Not configured"}</strong>
             </div>
             <div className="agent-health" style={{ marginTop: 12, background: "var(--blue-soft)" }}>
               <Info size={15} color="var(--blue)" />
@@ -189,18 +235,9 @@ export default function RulesPage() {
             <SectionHeader
               title="Merchant trust & rating"
               subtitle="Vendor verification protocols"
-              action={<StatusPill tone="warning">Guarded</StatusPill>}
+              action={<StatusPill tone={merchantVerification ? "success" : "neutral"}>{merchantVerification ? "Enabled" : "Disabled"}</StatusPill>}
             />
-            <label>
-              <span className="form-label">Minimum merchant score</span>
-              <select className="select" defaultValue="4.2" aria-label="Minimum merchant rating">
-                <option value="3.5">3.5 / 5.0</option>
-                <option value="4.0">4.0 / 5.0</option>
-                <option value="4.2">4.2 / 5.0</option>
-                <option value="4.5">4.5 / 5.0</option>
-                <option value="5">5.0 / 5.0</option>
-              </select>
-            </label>
+            <p className="section-subtitle">Minimum merchant score is not configured.</p>
             <div className="divider" />
             <div className="rule-card-heading">
               <span className="rule-icon"><LockKeyhole size={17} /></span>
@@ -215,8 +252,7 @@ export default function RulesPage() {
               />
             </div>
             <div className="chip-row" style={{ marginTop: 12 }}>
-              <span className="chip selected"><Star size={12} fill="currentColor" /> 4.2+ score</span>
-              <span className="chip"><BadgeCheck size={12} /> Verified status</span>
+              <span className="chip"><BadgeCheck size={12} /> Merchant verification {merchantVerification ? "on" : "off"}</span>
             </div>
           </section>
 
@@ -224,7 +260,7 @@ export default function RulesPage() {
             <SectionHeader
               title="Human approval threshold"
               subtitle="Mandatory operator intervention"
-              action={<StatusPill tone="success">Enforced</StatusPill>}
+              action={<StatusPill tone={hasRules ? "success" : "neutral"}>{hasRules ? "Enforced" : "Not configured"}</StatusPill>}
             />
             <div className="rule-copy" style={{ marginBottom: 10 }}>Auto-intercept trigger</div>
             <div className="search-wrap" style={{ width: "100%" }}>
@@ -240,13 +276,13 @@ export default function RulesPage() {
             <div className="agent-health" style={{ marginTop: 13, background: "var(--amber-soft)" }}>
               <AlertTriangle size={15} color="var(--amber)" />
               <div className="health-subtitle" style={{ margin: 0 }}>
-                Purchases over ${humanApproval || "0"} or from a first-time vendor wait for your sign-off.
+                Purchases over ${Number(humanApproval) || 0} or from a first-time vendor wait for your sign-off.
               </div>
             </div>
             <button
               className="button button-secondary"
               type="button"
-              onClick={saveRules}
+              onClick={() => void saveRules()}
               style={{ width: "100%", marginTop: 13 }}
             >
               Save approval threshold <ArrowRight size={13} />

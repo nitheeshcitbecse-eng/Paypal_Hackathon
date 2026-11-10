@@ -18,6 +18,20 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## Backend API
+
+The frontend connects to the Express API at `http://localhost:8000/api` by default. To use a different backend, set `NEXT_PUBLIC_API_BASE_URL` in `apps/web/.env.local`, for example:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
+```
+
+Purchase requests, approvals, orders, and policy rules are loaded from the backend. Empty responses are shown as empty states; backend connection and server errors can be retried from the shared error dialog.
+
+## Onboarding and notifications
+
+The welcome guide appears once per browser and can be reopened from the help button. In-app notifications use a structured record and are retained in the current browser session across route changes. Technical alerts use customer-friendly copy; payment failures and successful purchase decisions use distinct color-coded feedback.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

@@ -12,9 +12,9 @@ import {
   ShieldAlert,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeading, SectionHeader, StatusPill, Toast } from "@/components/ui";
-import { transactions, type Decision, type Transaction } from "@/mocks/data";
+import { getOrder, getOrders, type Decision, type Transaction } from "@/lib/api";
 
 const filterOptions: ("All" | Decision)[] = ["All", "Approved", "Held", "Blocked"];
 
@@ -29,6 +29,19 @@ export default function AuditPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [toast, setToast] = useState("");
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void getOrders()
+      .then((items) => {
+        if (active) setTransactions(items);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -40,7 +53,19 @@ export default function AuditPage() {
           .some((value) => value.toLowerCase().includes(query));
       return matchesStatus && matchesQuery;
     });
-  }, [filter, search]);
+  }, [filter, search, transactions]);
+
+  const approvedCount = transactions.filter((item) => item.status === "Approved").length;
+  const heldCount = transactions.filter((item) => item.status === "Held").length;
+  const blockedCount = transactions.filter((item) => item.status === "Blocked").length;
+
+  async function openReceipt(transaction: Transaction) {
+    try {
+      setSelected((await getOrder(transaction.id)) ?? transaction);
+    } catch {
+      // The shared backend error dialog reports API failures.
+    }
+  }
 
   function exportCsv() {
     const rows = [
@@ -112,25 +137,25 @@ export default function AuditPage() {
         <div className="card metric-card">
           <div className="metric-label">Total decisions</div>
           <div className="metric-icon"><FileCheck2 size={16} /></div>
-          <div className="metric-value">128</div>
-          <div className="metric-foot">This month</div>
+          <div className="metric-value">{transactions.length}</div>
+          <div className="metric-foot">Total decisions</div>
         </div>
         <div className="card metric-card">
           <div className="metric-label">Approved</div>
           <div className="metric-icon"><CheckCircle2 size={16} /></div>
-          <div className="metric-value">114</div>
-          <div className="metric-foot positive">89% of requests</div>
+          <div className="metric-value">{approvedCount}</div>
+          <div className="metric-foot positive">{transactions.length ? `${Math.round(approvedCount / transactions.length * 100)}% of requests` : "No requests yet"}</div>
         </div>
         <div className="card metric-card">
           <div className="metric-label">Held for review</div>
           <div className="metric-icon"><Clock3 size={16} /></div>
-          <div className="metric-value">11</div>
+          <div className="metric-value">{heldCount}</div>
           <div className="metric-foot">Human authorization required</div>
         </div>
         <div className="card metric-card">
           <div className="metric-label">Blocked</div>
           <div className="metric-icon"><ShieldAlert size={16} /></div>
-          <div className="metric-value">03</div>
+          <div className="metric-value">{blockedCount}</div>
           <div className="metric-foot">Policy rules enforced</div>
         </div>
       </section>
@@ -184,11 +209,11 @@ export default function AuditPage() {
               {filtered.map((item) => (
                 <tr
                   key={item.id}
-                  onClick={() => setSelected(item)}
+                  onClick={() => void openReceipt(item)}
                   style={{ cursor: "pointer" }}
                   tabIndex={0}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") setSelected(item);
+                    if (event.key === "Enter") void openReceipt(item);
                   }}
                 >
                   <td className="muted">{item.id}</td>
@@ -213,8 +238,10 @@ export default function AuditPage() {
           {filtered.length === 0 && (
             <div className="empty-state">
               <span className="empty-state-icon"><Search size={20} /></span>
-              <h3>No matching decisions</h3>
-              <p>Try a different search term or select another decision filter.</p>
+              <h3>{transactions.length === 0 ? "No decisions yet" : "No matching decisions"}</h3>
+              <p>{transactions.length === 0
+                ? "No active transactions found. Use the Agent tab to initiate a purchase request and populate data in real time."
+                : "Try a different search term or select another decision filter."}</p>
             </div>
           )}
         </div>
