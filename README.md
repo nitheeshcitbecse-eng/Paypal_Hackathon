@@ -26,7 +26,7 @@ AgentGuard Middleware
        |
        v
 AI Safety Validation
-(LLM + Zod)
+(LLM + regex heuristics)
        |
        v
 Rules Engine
@@ -50,36 +50,28 @@ Decision Gateway
 | Component | Technologies |
 |---|---|
 | Frontend | Next.js, React, Tailwind CSS |
-| Backend | Node.js, Express.js, TypeScript |
-| Database | PostgreSQL |
-| Payment Integration | PayPal REST API, PayPal Sandbox |
-| AI Safety | OpenAI API, Zod |
-| Testing | Vitest |
-| Deployment | Vercel, Render |
+| Backend | Python, FastAPI, Uvicorn |
+| Database | SQLite |
+| Payment Integration | PayPal REST API (Orders v2), PayPal Sandbox |
+| AI Safety | Groq / Anthropic / OpenAI (configurable), Pydantic |
+| Testing | pytest |
 
 ## Project Structure
 
 ```text
-agentguard/
+Paypal_Hackathon/
 ├── apps/
-│   ├── web/                  # Next.js frontend (AgentGuard UI prototype)
-│   │   ├── app/              # Overview, Playground, Rules, Approvals, Audit
+│   ├── web/                  # Next.js dashboard (Overview, Playground, Rules, Approvals, Audit)
+│   │   ├── app/              # Pages, all backed by the API
 │   │   ├── components/       # Shared navigation and UI components
-│   │   ├── lib/api.ts        # Backend API caller
-│   │   └── mocks/            # UI fixture data
-│   └── api/                  # Express backend
+│   │   └── lib/              # API client, types, formatting, hooks
+│   └── api/                  # FastAPI backend (see apps/api/README.md)
+│       ├── app/              # Routes, service, PayPal client, SQLite store
+│       └── tests/
 │
-├── packages/
-│   ├── shared/               # Shared types and schemas
-│   ├── rules/                # Policy rules engine
-│   ├── safety/               # AI safety and decision receipts
-│   └── agent/                # AI shopping agent
-│
-├── data/                     # Product catalog and merchant data
-├── docs/                     # Project documentation
-├── package.json
-├── package-lock.json
-├── .env.example
+├── *.py                      # AI engine (agentguard_ai): safety check, rules, receipts
+├── tests/                    # AI engine tests
+├── requirements.txt          # AI engine dependencies
 └── README.md
 ```
 
@@ -95,11 +87,10 @@ agentguard/
 
 ### Prerequisites
 
-- Node.js
-- npm
-- PostgreSQL
-- PayPal Developer Sandbox account
-- OpenAI API key
+- Python 3.9+
+- Node.js 20+ and npm
+- An LLM API key (Groq is free) for the AI safety check
+- Optional: PayPal Developer Sandbox account (without one, a mock PayPal is used)
 
 ### 1. Clone the Repository
 
@@ -108,7 +99,29 @@ git clone https://github.com/nitheeshcitbecse-eng/Paypal_Hackathon.git
 cd Paypal_Hackathon
 ```
 
-### 2. Run the Frontend Prototype
+### 2. Configure the AI safety check
+
+Create `.env` in the repository root:
+
+```env
+LLM_PROVIDER=groq
+LLM_API_KEY=your-key-here
+```
+
+After starting the backend, `http://localhost:5000/api/health` should report `"llm": "ready"`.
+
+### 3. Run the Backend (FastAPI)
+
+```bash
+cd apps/api
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 5000
+```
+
+API docs: [http://localhost:5000/docs](http://localhost:5000/docs). For PayPal Sandbox payments, copy
+`apps/api/.env.example` to `apps/api/.env` and set `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`.
+
+### 4. Run the Frontend
 
 ```bash
 cd apps/web
@@ -116,17 +129,21 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The AgentGuard prototype uses local fixtures for its dashboard, approval queue, and audit ledger, and includes interactive policy and task simulations.
-
-To connect the frontend API wrapper to a backend, set `NEXT_PUBLIC_API_URL` in `apps/web/.env.local`:
+Open [http://localhost:3000](http://localhost:3000). Every page reads from and writes to the backend.
+To use a backend on another address, set `NEXT_PUBLIC_API_URL` in `apps/web/.env.local`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:5000/api
 ```
 
-### 3. Backend services
+Never expose private API credentials through `NEXT_PUBLIC_*` variables.
 
-The API, database, and payment credentials are configured separately when those services are available. Never expose private API credentials through `NEXT_PUBLIC_*` variables.
+### 5. Run the Tests
+
+```bash
+python -m pytest              # AI engine (repo root)
+cd apps/api && python -m pytest   # backend
+```
 
 ## Team Responsibilities
 

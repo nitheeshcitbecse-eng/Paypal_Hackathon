@@ -1659,3 +1659,64 @@ a {
     padding-top: 12px;
   }
 }
+
+/* ---- API integration helpers ---- */
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+.check-list {
+  display: grid;
+  gap: 8px;
+}
+
+.check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.check-item strong {
+  display: block;
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.check-item span {
+  color: var(--ink-soft);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Name + meta lines are often <span>s; keep them on separate lines. */
+span.merchant-name,
+span.merchant-meta,
+span.decision-name,
+span.decision-meta {
+  display: block;
+}

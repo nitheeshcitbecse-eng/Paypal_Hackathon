@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import {
-  ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
   BadgeCheck,
@@ -10,82 +9,89 @@ import {
   Clock3,
   CreditCard,
   ExternalLink,
-  LockKeyhole,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
   WalletCards,
 } from "lucide-react";
-import { useState } from "react";
-import { activity, spendingByDay, transactions } from "@/mocks/data";
-import { MetricCard, PageHeading, SectionHeader, StatusPill, Toast, Toggle } from "@/components/ui";
+import { api } from "@/lib/api";
+import { decisionTone, usd } from "@/lib/format";
+import { useApi } from "@/lib/hooks";
+import { ApiNotice, LoadingState, MetricCard, PageHeading, SectionHeader, StatusPill } from "@/components/ui";
+
+async function loadOverview() {
+  const [stats, recent, approvals, rules, health] = await Promise.all([
+    api.stats(),
+    api.transactions({ limit: 5 }),
+    api.approvals(),
+    api.rules(),
+    api.health(),
+  ]);
+  return { stats, recent, approvals, rules, health };
+}
 
 export default function OverviewPage() {
-  const [isRunning, setIsRunning] = useState(true);
-  const [toast, setToast] = useState("");
+  const { data, error, loading, reload } = useApi(loadOverview);
 
-  function toggleAgent() {
-    setIsRunning((running) => !running);
-    setToast(isRunning ? "Agent automation paused." : "Agent automation resumed.");
-    window.setTimeout(() => setToast(""), 2600);
+  const heading = (
+    <PageHeading
+      eyebrow="AgentGuard · Protection active"
+      title="Welcome back, Morgan"
+      description="Here’s how AgentGuard is keeping your autonomous purchases safe."
+      actions={
+        <Link className="button button-primary" href="/agent">
+          <Sparkles size={14} />
+          Open playground
+        </Link>
+      }
+    />
+  );
+
+  if (!data) {
+    return (
+      <>
+        {heading}
+        {error && <ApiNotice message={error} onRetry={reload} />}
+        {loading && <LoadingState />}
+      </>
+    );
   }
+
+  const { stats, recent, approvals, rules, health } = data;
+  const total = stats.counts.approved + stats.counts.held + stats.counts.blocked;
+  const passRate = total ? `${((100 * stats.counts.approved) / total).toFixed(1)}% pass rate` : "No requests yet";
+  const week = stats.spending_by_day;
+  const weekTotal = week.reduce((sum, day) => sum + day.amount, 0);
+  const maxDay = Math.max(...week.map((day) => day.amount), 1);
+  const budgetUsed = Math.min(100, (100 * stats.spent_so_far) / stats.total_budget);
+  const llmReady = health.llm === "ready";
+  const paypal = health.paypal_mode === "sandbox" ? "PayPal Sandbox" : "Mock PayPal (no money moves)";
 
   return (
     <>
-      <PageHeading
-        eyebrow="Autonomous engine V2.4 · Protection active"
-        title="Good morning, Morgan"
-        description="Here’s how AgentGuard is keeping your autonomous purchases safe."
-        actions={
-          <Link className="button button-primary" href="/agent">
-            <Sparkles size={14} />
-            Open playground
-          </Link>
-        }
-      />
+      {heading}
+      {error && <ApiNotice message={error} onRetry={reload} />}
 
       <section className="dashboard-hero">
         <div>
           <div className="dashboard-hero-label">Total agent spending</div>
-          <div className="dashboard-hero-value">$18,450.20 <span style={{ fontSize: 13, letterSpacing: 0 }}>USD</span></div>
+          <div className="dashboard-hero-value">{usd(stats.spent_so_far)} <span style={{ fontSize: 13, letterSpacing: 0 }}>USD</span></div>
           <div className="dashboard-hero-meta">
-            <span>Today&apos;s volume: <strong>$4,200.00</strong></span>
-            <span>Budget cycle resets in 8 days</span>
+            <span>Remaining budget: <strong>{usd(stats.remaining_budget)}</strong> of {usd(stats.total_budget)}</span>
+            <span>Blocked before payment: {usd(stats.blocked_amount)}</span>
           </div>
         </div>
         <div className="dashboard-hero-side">
-          <div className="detail-row"><span>Policy integrity</span><strong>All 5 safeguards enforced</strong></div>
-          <div className="detail-row"><span>Autonomous agents</span><strong>{isRunning ? "Protection active" : "Paused"}</strong></div>
+          <div className="detail-row"><span>AI safety check</span><strong>{llmReady ? "Online" : health.llm}</strong></div>
+          <div className="detail-row"><span>Payments</span><strong>{paypal}</strong></div>
         </div>
       </section>
 
       <section className="metric-grid" aria-label="Account metrics">
-        <MetricCard
-          label="Transactions"
-          value="1,428"
-          foot="+12% vs last week"
-          icon={CircleDollarSign}
-        />
-        <MetricCard
-          label="Allowed"
-          value="1,290"
-          foot="90.3% pass rate"
-          icon={CreditCard}
-          positive
-        />
-        <MetricCard
-          label="Blocked"
-          value="94"
-          foot="Critical mitigations"
-          icon={ShieldAlert}
-          positive
-        />
-        <MetricCard
-          label="Pending"
-          value="44"
-          foot="Human-in-the-loop"
-          icon={Clock3}
-        />
+        <MetricCard label="Transactions" value={String(total)} foot="All agent requests" icon={CircleDollarSign} />
+        <MetricCard label="Allowed" value={String(stats.counts.approved)} foot={passRate} icon={CreditCard} positive />
+        <MetricCard label="Blocked" value={String(stats.counts.blocked)} foot="Stopped before payment" icon={ShieldAlert} positive />
+        <MetricCard label="Pending" value={String(stats.pending_approvals)} foot="Human-in-the-loop" icon={Clock3} />
       </section>
 
       <div className="content-grid">
@@ -93,50 +99,49 @@ export default function OverviewPage() {
           <section className="card card-pad">
             <SectionHeader
               title="Agent activity"
-              subtitle="Live status across your connected shopping agents"
+              subtitle="Live status of the AgentGuard decision engine"
               action={
-                <StatusPill tone={isRunning ? "success" : "neutral"} icon={isRunning ? BadgeCheck : LockKeyhole}>
-                  {isRunning ? "All systems protected" : "Automation paused"}
+                <StatusPill tone={llmReady ? "success" : "warning"} icon={llmReady ? BadgeCheck : ShieldAlert}>
+                  {llmReady ? "All systems protected" : "Degraded"}
                 </StatusPill>
               }
             />
-            <div className="agent-health">
+            <div className="agent-health" style={llmReady ? undefined : { background: "var(--amber-soft)" }}>
               <span className="health-icon">
-                <ShieldCheck size={18} />
+                {llmReady ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
               </span>
               <div>
-                <div className="health-title">{isRunning ? "AgentGuard is active" : "AgentGuard is paused"}</div>
+                <div className="health-title">{llmReady ? "AgentGuard is active" : "AI safety check unavailable"}</div>
                 <div className="health-subtitle">
-                  {isRunning
-                    ? "Policy checks are running before every payment."
-                    : "No new autonomous payments will be authorized."}
+                  {llmReady
+                    ? "The AI safety scan and policy rules run before every payment."
+                    : health.llm.startsWith("offline")
+                      ? "Offline mode: heuristics and policy rules still run before every payment."
+                      : "AgentGuard fails closed, so every purchase is blocked until the AI check is restored."}
                 </div>
-              </div>
-              <div className="health-state">
-                <Toggle checked={isRunning} onChange={toggleAgent} label="Toggle agent automation" />
               </div>
             </div>
             <div className="divider" />
             <div className="section-header" style={{ marginBottom: 10 }}>
               <div>
                 <h3 className="section-title" style={{ fontSize: 12 }}>Spending & velocity</h3>
-                <p className="section-subtitle">Seven-day agent transaction activity</p>
+                <p className="section-subtitle">Seven-day agent spending</p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 18, fontWeight: 750 }}>$4,200</div>
+                <div style={{ fontSize: 18, fontWeight: 750 }}>{usd(weekTotal)}</div>
                 <div className="metric-foot positive" style={{ justifyContent: "flex-end", marginTop: 4 }}>
-                  <ArrowDownRight size={12} /> Sunday volume
+                  Last 7 days
                 </div>
               </div>
             </div>
             <div className="chart-area" aria-label="Spending by day">
-              {spendingByDay.map(({ day, amount }, index) => (
-                <div className="chart-column" key={day}>
-                  <span className="chart-value">${amount}</span>
+              {week.map(({ day, date, amount }, index) => (
+                <div className="chart-column" key={date}>
+                  <span className="chart-value">${Math.round(amount)}</span>
                   <div
-                    className={`chart-bar${index === spendingByDay.length - 1 ? " highlight" : ""}`}
-                    style={{ height: `${Math.max(9, amount / 2.4)}%` }}
-                    title={`${day}: $${amount}`}
+                    className={`chart-bar${index === week.length - 1 ? " highlight" : ""}`}
+                    style={{ height: `${Math.max(9, (amount / maxDay) * 90)}%` }}
+                    title={`${day} ${date}: ${usd(amount)}`}
                   />
                   <span className="chart-label">{day}</span>
                 </div>
@@ -147,33 +152,38 @@ export default function OverviewPage() {
           <section className="card card-pad">
             <SectionHeader
               title="Recent agent activity"
-              subtitle="Latest decisions made by your agents"
+              subtitle="Latest decisions made by AgentGuard"
               action={
                 <Link className="button button-quiet" href="/audit">
                   View all <ArrowRight size={13} />
                 </Link>
               }
             />
-            <div className="activity-list">
-              {activity.map((transaction) => (
-                <div className="activity-item" key={transaction.id}>
-                  <span className="merchant-logo">{transaction.merchantInitials}</span>
-                  <div className="activity-item-main">
-                    <div className="activity-item-top">
-                      <span className="merchant-name">{transaction.merchant}</span>
-                      <span className="activity-item-amount">${transaction.amount.toFixed(2)}</span>
-                    </div>
-                    <div className="merchant-meta">{transaction.product}</div>
-                    <div className="activity-item-foot">
-                      <span className="merchant-meta">Agent: {transaction.agent}</span>
-                      <StatusPill tone={transaction.status === "Approved" ? "success" : transaction.status === "Held" ? "warning" : "danger"}>
-                        {transaction.status}
-                      </StatusPill>
+            {recent.length === 0 ? (
+              <div className="empty-state" style={{ padding: "18px 10px" }}>
+                <h3>No agent purchases yet</h3>
+                <p>Run a task in the playground to see AgentGuard decide.</p>
+              </div>
+            ) : (
+              <div className="activity-list">
+                {recent.map((transaction) => (
+                  <div className="activity-item" key={transaction.id}>
+                    <span className="merchant-logo">{transaction.merchantInitials}</span>
+                    <div className="activity-item-main">
+                      <div className="activity-item-top">
+                        <span className="merchant-name">{transaction.merchant}</span>
+                        <span className="activity-item-amount">{usd(transaction.amount)}</span>
+                      </div>
+                      <div className="merchant-meta">{transaction.product}</div>
+                      <div className="activity-item-foot">
+                        <span className="merchant-meta">Agent: {transaction.agent}</span>
+                        <StatusPill tone={decisionTone[transaction.status]}>{transaction.status}</StatusPill>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
 
@@ -186,48 +196,39 @@ export default function OverviewPage() {
             />
             <div className="bar-list">
               <div>
-                <div className="bar-row-top"><span>Daily spend</span><strong>$420 / $1,000</strong></div>
-                <div className="bar-track"><div className="bar-fill" style={{ width: "42%" }} /></div>
-              </div>
-              <div>
-                <div className="bar-row-top"><span>Monthly budget</span><strong>$2,840 / $5,000</strong></div>
-                <div className="bar-track"><div className="bar-fill green" style={{ width: "57%" }} /></div>
+                <div className="bar-row-top"><span>Total budget</span><strong>{usd(stats.spent_so_far)} / {usd(stats.total_budget)}</strong></div>
+                <div className="bar-track"><div className="bar-fill green" style={{ width: `${budgetUsed}%` }} /></div>
               </div>
             </div>
             <div className="divider" />
-            <div className="detail-row"><span>Per-transaction cap</span><strong>$250.00</strong></div>
-            <div className="detail-row"><span>Merchant minimum rating</span><strong>4.2 / 5.0</strong></div>
-            <div className="detail-row"><span>Restricted categories</span><strong>4 hard blocks</strong></div>
-            <div className="detail-row"><span>Policy mode</span><StatusPill tone="info">Strict</StatusPill></div>
+            <div className="detail-row"><span>Per-transaction cap</span><strong>{usd(rules.max_per_order)}</strong></div>
+            <div className="detail-row"><span>Approval required above</span><strong>{usd(rules.approval_limit)}</strong></div>
+            <div className="detail-row"><span>Merchant minimum rating</span><strong>{rules.min_merchant_rating.toFixed(1)} / 5.0</strong></div>
+            <div className="detail-row"><span>Allowed categories</span><strong>{rules.allowed_categories.length}</strong></div>
+            <div className="detail-row">
+              <span>Return policy</span>
+              <StatusPill tone={rules.require_return_policy ? "info" : "neutral"}>{rules.require_return_policy ? "Required" : "Not required"}</StatusPill>
+            </div>
           </section>
 
           <section className="card card-pad">
             <SectionHeader
               title="Approval queue"
               subtitle="Purchases that need your decision"
-              action={<StatusPill tone="warning">2 waiting</StatusPill>}
+              action={<StatusPill tone={approvals.length ? "warning" : "success"}>{approvals.length} waiting</StatusPill>}
             />
             <div className="decision-list">
-              {transactions
-                .filter((transaction) => transaction.status === "Held")
-                .map((transaction) => (
-                  <div className="decision-row" key={transaction.id}>
-                    <span className="merchant-logo">{transaction.merchantInitials}</span>
-                    <div className="decision-main">
-                      <div className="decision-name">{transaction.product}</div>
-                      <div className="decision-meta">{transaction.merchant} · ${transaction.amount.toFixed(2)}</div>
-                    </div>
-                    <ArrowUpRight size={14} className="muted" />
+              {approvals.length === 0 && <p className="section-subtitle">Nothing is waiting for you.</p>}
+              {approvals.slice(0, 4).map((transaction) => (
+                <Link className="decision-row" key={transaction.id} href="/approvals">
+                  <span className="merchant-logo">{transaction.merchantInitials}</span>
+                  <div className="decision-main">
+                    <div className="decision-name">{transaction.product}</div>
+                    <div className="decision-meta">{transaction.merchant} · {usd(transaction.amount)}</div>
                   </div>
-                ))}
-              <div className="decision-row">
-                <span className="merchant-logo">SM</span>
-                <div className="decision-main">
-                  <div className="decision-name">Wireless studio microphone</div>
-                  <div className="decision-meta">Sound Market · $189.00</div>
-                </div>
-                <Clock3 size={14} className="muted" />
-              </div>
+                  <ArrowUpRight size={14} className="muted" />
+                </Link>
+              ))}
             </div>
             <Link className="button button-secondary" href="/approvals" style={{ width: "100%", marginTop: 12 }}>
               Review approvals <ArrowRight size={13} />
@@ -239,16 +240,17 @@ export default function OverviewPage() {
               <span className="rule-icon"><WalletCards size={17} /></span>
               <div>
                 <h3 className="section-title" style={{ fontSize: 12 }}>PayPal protection</h3>
-                <p className="section-subtitle">Zero-liability coverage is active for eligible purchases.</p>
+                <p className="section-subtitle">
+                  Payments run through {paypal}. Held purchases are only reserved until you approve them.
+                </p>
               </div>
             </div>
             <Link href="/audit" className="button button-quiet" style={{ marginTop: 9, paddingLeft: 0 }}>
-              Learn about decision receipts <ExternalLink size={12} />
+              Browse decision receipts <ExternalLink size={12} />
             </Link>
           </section>
         </div>
       </div>
-      {toast && <Toast message={toast} />}
     </>
   );
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Check } from "lucide-react";
+import { AlertTriangle, Check, LoaderCircle, RotateCcw } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export function PageHeading({
@@ -108,13 +108,46 @@ export function Toggle({
   );
 }
 
-export function Toast({ message }: { message: string }) {
+export function Toast({ message, tone = "success" }: { message: string; tone?: "success" | "error" }) {
+  const error = tone === "error";
   return (
-    <div className="toast" role="status">
-      <span className="health-icon" style={{ width: 23, height: 23 }}>
-        <Check size={13} aria-hidden="true" />
+    <div className="toast" role={error ? "alert" : "status"}>
+      <span
+        className="health-icon"
+        style={{ width: 23, height: 23, flexShrink: 0, ...(error ? { background: "var(--red-soft)", color: "var(--red)" } : {}) }}
+      >
+        {error ? <AlertTriangle size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}
       </span>
       {message}
+    </div>
+  );
+}
+
+/** Shown when the AgentGuard API can't be reached or returns an error. */
+export function ApiNotice({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="agent-health" role="alert" style={{ background: "var(--red-soft)", marginBottom: 14 }}>
+      <span className="health-icon" style={{ background: "transparent", color: "var(--red)" }}>
+        <AlertTriangle size={17} />
+      </span>
+      <div>
+        <div className="health-title">AgentGuard API unavailable</div>
+        <div className="health-subtitle">{message}</div>
+      </div>
+      {onRetry && (
+        <button className="button button-secondary" type="button" onClick={onRetry} style={{ marginLeft: "auto" }}>
+          <RotateCcw size={13} /> Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function LoadingState({ label = "Loading from AgentGuard…" }: { label?: string }) {
+  return (
+    <div className="empty-state" style={{ padding: "26px 10px" }}>
+      <span className="empty-state-icon"><LoaderCircle size={20} className="spin" /></span>
+      <p>{label}</p>
     </div>
   );
 }

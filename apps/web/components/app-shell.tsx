@@ -15,12 +15,13 @@ import {
   Sun,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { api } from "@/lib/api";
 
 const navigation = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/agent", label: "Playground", icon: Bot },
   { href: "/rules", label: "Rules & Settings", icon: BookOpenCheck },
-  { href: "/approvals", label: "Approval Queue", icon: ShieldCheck, count: "2" },
+  { href: "/approvals", label: "Approval Queue", icon: ShieldCheck },
   { href: "/audit", label: "Audit Ledger", icon: Activity },
 ];
 
@@ -59,7 +60,7 @@ const pageNames: Record<string, string> = {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [approvalCount, setApprovalCount] = useState(2);
+  const [approvalCount, setApprovalCount] = useState(0);
   const activeHref = pathname === "/" ? "/" : `/${pathname.split("/")[1]}`;
   const title = pageNames[activeHref] ?? "Overview";
 
@@ -72,6 +73,20 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("agentguard:approval-count", updateApprovalCount);
     return () => window.removeEventListener("agentguard:approval-count", updateApprovalCount);
   }, []);
+
+  // Refresh the approval badge from the API whenever the page changes.
+  useEffect(() => {
+    let cancelled = false;
+    api.approvals().then(
+      (queue) => {
+        if (!cancelled) setApprovalCount(queue.length);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   const navItems = navigation.map((item) =>
     item.href === "/approvals"
